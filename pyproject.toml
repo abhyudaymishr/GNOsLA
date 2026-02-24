@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gola"
+version = "0.1.0"
+description = "Geometric Neural Operator with Sparse Local Attention"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "huggingface_hub>=0.24",
+  "matplotlib>=3.8",
+  "numpy>=1.24",
+  "plotly>=5.22",
+  "torch>=2.1",
+]
+
+[tool.setuptools]
+packages = ["gola"]
