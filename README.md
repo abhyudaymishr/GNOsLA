@@ -2,9 +2,9 @@
 
 This repository provides a formal implementation scaffold for learning one-step PDE time-advance operators:
 
-\[
+$$
 \mathcal{T}_{\Delta t}: u(\cdot, t) \mapsto u(\cdot, t + \Delta t)
-\]
+$$
 
 using geometry-induced sparse attention.
 
@@ -28,9 +28,9 @@ where `N = H * W`.
 
 Tokens are geometric, not sequential:
 
-\[
+$$
 \tau_i^t = (x_i, u_i^t)
-\]
+$$
 
 No positional encoding, no causal masks, no padding.
 
@@ -51,15 +51,15 @@ The graph stores:
 
 `GOLALayer` implements:
 
-\[
+$$
 u_i^{(l+1)} = u_i^{(l)} + \sum_{j \in N(i)} \alpha_{ij}^{(l)} W^{(l)}u_j^{(l)} w_j
-\]
+$$
 
 with
 
-\[
+$$
 \alpha_{ij}^{(l)} = \mathrm{softmax}_{j \in N(i)}\left(\phi_\theta(u_i^{(l)}, u_j^{(l)}, x_i-x_j, \|x_i-x_j\|)\right)
-\]
+$$
 
 This is a learned local quadrature rule for a nonlinear integral operator.
 
@@ -67,9 +67,9 @@ This is a learned local quadrature rule for a nonlinear integral operator.
 
 `GOLAOperator` stacks `L` layers:
 
-\[
+$$
 \hat{u}_{t+\Delta t} = \mathcal{G}_\theta(u_t)
-\]
+$$
 
 and supports residual output prediction.
 
