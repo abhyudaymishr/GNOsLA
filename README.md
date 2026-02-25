@@ -107,6 +107,22 @@ python scripts/train_gola.py \
   --lambda-enstrophy 0.0
 ```
 
+Low-memory profile (<8 GB RAM target):
+
+```bash
+python scripts/train_gola.py \
+  --hf-repo-id sage-lab/PreGen-NavierStokes-2D \
+  --hf-filename Geometry_Axis/FPO_Geometry_Easy_NoObstacle.npy \
+  --hf-repo-type dataset \
+  --layout auto \
+  --low-memory \
+  --ram-budget-gb 8 \
+  --epochs 10 \
+  --device cpu
+```
+
+This profile enforces memory-safe defaults: `batch_size=1`, `num_workers=0`, chunked graph build, bounded neighbors, and optional model-size clamps.
+
 Using Hugging Face Hub directly (your PreGen dataset file):
 
 ```python
@@ -137,6 +153,7 @@ python scripts/train_gola.py \
 
 - Complexity is \(O(Nk)\) with \(k = |N(i)|\), versus dense attention \(O(N^2)\).
 - `radius_graph` and `knn_graph` are chunked to keep memory bounded on larger meshes.
+- For `.npy` datasets, mmap loading is enabled by default to avoid loading the full tensor into RAM (`--no-mmap` disables it).
 
 ## Visualization
 
