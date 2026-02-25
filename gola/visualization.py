@@ -243,6 +243,120 @@ def _plot_attention_panels(
     return fig
 
 
+def _attention_panel_components(
+    xx: np.ndarray,
+    yy: np.ndarray,
+    mask: np.ndarray,
+    query_point: tuple[float, float],
+    radius: float,
+    sigma: float,
+    max_edges: int,
+) -> tuple[
+    int,
+    int,
+    float,
+    float,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
+    qy, qx = _nearest_valid_index(xx, yy, mask, query_point)
+    xq = float(xx[qy, qx])
+    yq = float(yy[qy, qx])
+    geod = _geodesic_distance(mask, xx, yy, (qy, qx), radius)
+    euclid = mask & (((xx - xq) ** 2 + (yy - yq) ** 2) <= radius**2)
+    geodesic_local = mask & (geod <= radius)
+    euclid_only = euclid & (~geodesic_local)
+    edge_coords, alpha = _attention_edges(geod, geodesic_local, (qy, qx), sigma, max_edges)
+    return qy, qx, xq, yq, euclid, geodesic_local, euclid_only, edge_coords, alpha
+
+
+def _save_attention_components(
+    output_dir: Path,
+    xx: np.ndarray,
+    yy: np.ndarray,
+    mask: np.ndarray,
+    *,
+    query_point: tuple[float, float],
+    radius: float,
+    sigma: float,
+    max_edges: int,
+    dpi: int,
+) -> dict[str, Path]:
+    import matplotlib.pyplot as plt
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    qy, qx, xq, yq, euclid, geodesic_local, euclid_only, edge_coords, alpha = _attention_panel_components(
+        xx,
+        yy,
+        mask,
+        query_point,
+        radius,
+        sigma,
+        max_edges,
+    )
+
+    files = {
+        "domain_manifold_geometry": output_dir / "domain_manifold_geometry.png",
+        "euclidean_local_ball": output_dir / "euclidean_local_ball.png",
+        "geodesic_local_support": output_dir / "geodesic_local_support.png",
+        "sparse_geometric_attention_weights": output_dir / "sparse_geometric_attention_weights.png",
+    }
+
+    fig, ax = plt.subplots(figsize=(6, 6), constrained_layout=True)
+    _draw_base(ax, xx, yy, mask)
+    ax.scatter(xx[mask], yy[mask], s=6, color="#4776b4", alpha=0.20, linewidths=0.0)
+    ax.scatter([xq], [yq], s=150, color="#c53030", marker="*", zorder=6)
+    ax.set_title("Domain Manifold Geometry", fontsize=13)
+    fig.savefig(files["domain_manifold_geometry"], dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(6, 6), constrained_layout=True)
+    _draw_base(ax, xx, yy, mask)
+    ax.scatter(xx[euclid], yy[euclid], s=11, color="#f6ad55", alpha=0.8, linewidths=0.0)
+    if np.any(euclid_only):
+        ax.scatter(xx[euclid_only], yy[euclid_only], s=14, color="#e53e3e", alpha=0.9, linewidths=0.0)
+    ax.add_patch(plt.Circle((xq, yq), radius, fill=False, linestyle="--", linewidth=2.0, color="#b83280"))
+    ax.scatter([xq], [yq], s=150, color="#c53030", marker="*", zorder=6)
+    ax.set_title("Euclidean Local Ball", fontsize=13)
+    fig.savefig(files["euclidean_local_ball"], dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(6, 6), constrained_layout=True)
+    _draw_base(ax, xx, yy, mask)
+    ax.scatter(xx[geodesic_local], yy[geodesic_local], s=11, color="#2b6cb0", alpha=0.85, linewidths=0.0)
+    ax.scatter([xq], [yq], s=150, color="#c53030", marker="*", zorder=6)
+    ax.set_title("Geodesic Local Support", fontsize=13)
+    fig.savefig(files["geodesic_local_support"], dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(6, 6), constrained_layout=True)
+    _draw_base(ax, xx, yy, mask)
+    if len(edge_coords) > 0:
+        alpha_max = float(np.max(alpha))
+        denom = alpha_max if alpha_max > 0 else 1.0
+        for (iy, ix), w in zip(edge_coords, alpha):
+            strength = float(w) / denom
+            ax.plot(
+                [xq, float(xx[iy, ix])],
+                [yq, float(yy[iy, ix])],
+                color="#2f855a",
+                alpha=0.10 + 0.85 * strength,
+                linewidth=0.5 + 2.8 * strength,
+            )
+        xs = xx[edge_coords[:, 0], edge_coords[:, 1]]
+        ys = yy[edge_coords[:, 0], edge_coords[:, 1]]
+        ax.scatter(xs, ys, c=alpha, cmap="viridis", s=20 + 190 * alpha, linewidths=0.0)
+    ax.scatter([xq], [yq], s=150, color="#c53030", marker="*", zorder=6)
+    ax.set_title("Sparse Geometric Attention Weights", fontsize=13)
+    fig.savefig(files["sparse_geometric_attention_weights"], dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+
+    return files
+
+
 def _resolve_data_path(config: DatasetAttentionConfig) -> Path:
     if config.data_path is not None:
         return Path(config.data_path)
@@ -560,7 +674,7 @@ def create_dataset_sparse_geometric_attention_figure(
     holes = invalid & (~_boundary_connected(invalid))
     hole_ratio = float(holes.mean())
     title_suffix = (
-        f"Dataset={path.name} layout={layout} sample={si} time={ti} interior-hole-ratio={hole_ratio:.4f}"
+        f"layout={layout} sample={si} time={ti} interior-hole-ratio={hole_ratio:.4f}"
     )
 
     return _plot_attention_panels(
@@ -590,6 +704,26 @@ def save_sparse_geometric_attention(
     return output_path
 
 
+def save_sparse_geometric_attention_components(
+    output_dir: str | Path,
+    config: AttentionVisualizationConfig | None = None,
+    dpi: int = 220,
+) -> dict[str, Path]:
+    config = AttentionVisualizationConfig() if config is None else config
+    xx, yy, mask = _build_domain(config)
+    return _save_attention_components(
+        output_dir=Path(output_dir),
+        xx=xx,
+        yy=yy,
+        mask=mask,
+        query_point=config.query_point,
+        radius=config.radius,
+        sigma=config.sigma,
+        max_edges=config.max_edges,
+        dpi=dpi,
+    )
+
+
 def save_dataset_sparse_geometric_attention(
     output_path: str | Path,
     config: DatasetAttentionConfig,
@@ -603,6 +737,36 @@ def save_dataset_sparse_geometric_attention(
     fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
     return output_path
+
+
+def save_dataset_sparse_geometric_attention_components(
+    output_dir: str | Path,
+    config: DatasetAttentionConfig,
+    dpi: int = 220,
+) -> dict[str, Path]:
+    path = _resolve_data_path(config)
+    arr = _load_array(path, config.field_key)
+    layout = _infer_layout(arr.shape, config.layout)
+    frame, (si, _ti) = _extract_frame(arr, layout, config.sample_idx, config.time_idx)
+    if frame.ndim != 3:
+        raise ValueError(f"expected extracted frame rank=3, got {frame.ndim}")
+
+    xx, yy, coord_valid = _frame_coordinates(frame, config.x_channel, config.y_channel)
+    mask = _frame_mask(frame, arr, layout, si, config) & coord_valid
+    if not np.any(mask):
+        raise ValueError("no valid fluid nodes available for visualization")
+
+    return _save_attention_components(
+        output_dir=Path(output_dir),
+        xx=xx,
+        yy=yy,
+        mask=mask,
+        query_point=config.query_point,
+        radius=config.radius,
+        sigma=config.sigma,
+        max_edges=config.max_edges,
+        dpi=dpi,
+    )
 
 
 def _parse_hole_values(raw: list[str]) -> tuple[tuple[float, float, float], ...]:

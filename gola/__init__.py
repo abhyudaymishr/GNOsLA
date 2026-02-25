@@ -28,8 +28,10 @@ __all__ = [
     "make_uniform_grid",
     "radius_graph",
     "save_dataset_sparse_geometric_attention",
+    "save_dataset_sparse_geometric_attention_components",
     "save_plotly_kernel_figure",
     "save_sparse_geometric_attention",
+    "save_sparse_geometric_attention_components",
     "train_operator",
 ]
 
@@ -42,6 +44,8 @@ def __getattr__(name: str):
         "create_dataset_sparse_geometric_attention_figure",
         "save_sparse_geometric_attention",
         "save_dataset_sparse_geometric_attention",
+        "save_sparse_geometric_attention_components",
+        "save_dataset_sparse_geometric_attention_components",
         "PlotlyKernelVisualizationConfig",
         "create_plotly_kernel_figure",
         "save_plotly_kernel_figure",
@@ -52,7 +56,9 @@ def __getattr__(name: str):
             create_dataset_sparse_geometric_attention_figure,
             create_sparse_geometric_attention_figure,
             save_dataset_sparse_geometric_attention,
+            save_dataset_sparse_geometric_attention_components,
             save_sparse_geometric_attention,
+            save_sparse_geometric_attention_components,
         )
         from .visualization_plotly import (
             PlotlyKernelVisualizationConfig,
@@ -68,8 +74,10 @@ def __getattr__(name: str):
             "create_plotly_kernel_figure": create_plotly_kernel_figure,
             "create_sparse_geometric_attention_figure": create_sparse_geometric_attention_figure,
             "save_dataset_sparse_geometric_attention": save_dataset_sparse_geometric_attention,
+            "save_dataset_sparse_geometric_attention_components": save_dataset_sparse_geometric_attention_components,
             "save_plotly_kernel_figure": save_plotly_kernel_figure,
             "save_sparse_geometric_attention": save_sparse_geometric_attention,
+            "save_sparse_geometric_attention_components": save_sparse_geometric_attention_components,
         }
         return exports[name]
     raise AttributeError(name)
