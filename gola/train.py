@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
 import torch
 from torch.optim import Adam
@@ -21,12 +22,15 @@ from .model import GOLAOperator
 class TrainConfig:
     epochs: int = 20
     batch_size: int = 1
+    num_workers: int = 0
     learning_rate: float = 1e-3
     weight_decay: float = 1e-6
     radius: float | None = 0.02
     k_neighbors: int | None = None
     max_neighbors: int | None = 64
     graph_chunk_size: int = 1024
+    low_memory_mode: bool = False
+    ram_budget_gb: float = 8.0
     lambda_div: float = 0.0
     lambda_energy: float = 0.0
     lambda_enstrophy: float = 0.0
@@ -58,6 +62,72 @@ def build_graph(
     )
 
 
+def _estimated_neighbors_per_node(dataset: PreGenNavierStokes2DDataset, config: TrainConfig) -> int:
+    if config.k_neighbors is not None:
+        return max(int(config.k_neighbors), 1)
+    if config.max_neighbors is not None:
+        return max(int(config.max_neighbors), 1)
+    if config.radius is not None:
+        nx = max(dataset.width, 1)
+        ny = max(dataset.height, 1)
+        local_density = float(nx * ny)
+        estimate = int(math.pi * (config.radius**2) * local_density)
+        return max(min(estimate, dataset.height * dataset.width - 1), 1)
+    return 16
+
+
+def estimate_peak_ram_gb(
+    model: GOLAOperator,
+    dataset: PreGenNavierStokes2DDataset,
+    config: TrainConfig,
+) -> float:
+    n = dataset.height * dataset.width
+    c = dataset.channels
+    spatial_dim = int(dataset.x.shape[-1])
+    hidden_dim = int(model.input_proj.out_features)
+    num_layers = int(len(model.layers))
+    k = _estimated_neighbors_per_node(dataset, config)
+    e = n * k
+
+    dtype_bytes = 4
+    index_bytes = 8
+
+    resident_fields = getattr(dataset, "resident_fields_bytes", 0)
+    graph_build = max(config.graph_chunk_size, 1) * n * dtype_bytes
+    edge_storage = e * (2 * index_bytes + (spatial_dim + 1) * dtype_bytes)
+    edge_working = e * (4 * dtype_bytes)
+    activation = n * hidden_dim * max(num_layers, 1) * 6 * dtype_bytes
+    batch_storage = max(config.batch_size, 1) * n * (2 * c + 1) * dtype_bytes
+    params = sum(p.numel() * p.element_size() for p in model.parameters())
+
+    total_bytes = resident_fields + graph_build + edge_storage + edge_working + activation + batch_storage + params
+    return float(total_bytes) / float(1024**3)
+
+
+def apply_low_memory_profile(
+    model: GOLAOperator,
+    dataset: PreGenNavierStokes2DDataset,
+    config: TrainConfig,
+) -> None:
+    if not config.low_memory_mode:
+        return
+
+    config.batch_size = 1
+    config.num_workers = 0
+    config.graph_chunk_size = min(max(config.graph_chunk_size, 64), 256)
+
+    if config.k_neighbors is not None:
+        config.k_neighbors = min(config.k_neighbors, 24)
+        config.radius = None
+    else:
+        config.max_neighbors = 24 if config.max_neighbors is None else min(config.max_neighbors, 24)
+
+    est = estimate_peak_ram_gb(model, dataset, config)
+    print(f"[memory] low_memory_mode enabled | estimated_peak_ram_gb={est:.2f} | budget_gb={config.ram_budget_gb:.2f}")
+    if est > config.ram_budget_gb:
+        print("[memory] estimate exceeds budget; reduce hidden_dim/layers or neighbors further.")
+
+
 def train_operator(
     model: GOLAOperator,
     dataset: PreGenNavierStokes2DDataset,
@@ -65,7 +135,19 @@ def train_operator(
 ) -> list[dict[str, float]]:
     device = torch.device(config.device)
     model = model.to(device)
-    loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, drop_last=False)
+    apply_low_memory_profile(model, dataset, config)
+    if not config.low_memory_mode:
+        est = estimate_peak_ram_gb(model, dataset, config)
+        print(f"[memory] estimated_peak_ram_gb={est:.2f}")
+
+    loader = DataLoader(
+        dataset,
+        batch_size=config.batch_size,
+        shuffle=True,
+        drop_last=False,
+        num_workers=config.num_workers,
+        pin_memory=False,
+    )
 
     x = dataset.x.to(device)
     graph = build_graph(x, config)
