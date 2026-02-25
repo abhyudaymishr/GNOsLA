@@ -193,3 +193,13 @@ python -m gola.visualization_plotly \
   --hf-repo-type dataset \
   --output-html artifacts/navier_stokes_kernel_3d.html
 ```
+
+## Google Colab
+
+[Open in Colab](https://colab.research.google.com/github/abhyudaymishr/GNOsLA/blob/main/notebooks/gola_colab_demo.ipynb)
+
+Colab notebook:
+
+- `notebooks/gola_colab_demo.ipynb`
+
+The first code cell installs the latest module directly from this repository and sets up plotting.
