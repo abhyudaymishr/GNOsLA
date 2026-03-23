@@ -177,7 +177,7 @@ def _distance_to_boundary(mask: np.ndarray) -> np.ndarray:
 def _signed_distance_from_mask(mask: np.ndarray) -> np.ndarray:
     d = _distance_to_boundary(mask)
     signed = np.where(mask, d, -d)
-    return signed.astype(np.float32)
+    return signed.astype(np.float64)
 
 
 def _extract_geometry_surface(
