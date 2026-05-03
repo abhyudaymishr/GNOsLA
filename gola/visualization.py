@@ -598,6 +598,47 @@ def _frame_coordinates(
     return xx, yy, valid
 
 
+def _binary_channel_score(values: np.ndarray) -> float:
+    near_zero = float(np.mean(np.isclose(values, 0.0, atol=1e-6)))
+    near_one = float(np.mean(np.isclose(values, 1.0, atol=1e-6)))
+    return near_zero + near_one
+
+
+def _infer_obstacle_from_frame_channels(
+    frame: np.ndarray,
+    threshold: float,
+    mode: str,
+) -> np.ndarray | None:
+    _, _, channels = frame.shape
+    best: tuple[int, float, float, np.ndarray] | None = None
+
+    for ch in range(channels):
+        values = frame[..., ch]
+        if not np.isfinite(values).all():
+            continue
+
+        obstacle = _obstacle_from_channel(values, mode, threshold)
+        if not np.any(obstacle):
+            continue
+
+        inner = obstacle & (~_boundary_connected(obstacle))
+        inner_count = int(inner.sum())
+        if inner_count <= 0:
+            continue
+
+        ratio = float(obstacle.mean())
+        if not (0.0005 < ratio < 0.35):
+            continue
+
+        score = (inner_count, _binary_channel_score(values), -abs(ratio - 0.08), obstacle)
+        if best is None or score[:3] > best[:3]:
+            best = score
+
+    if best is None:
+        return None
+    return best[3]
+
+
 def _frame_mask(
     frame: np.ndarray,
     arr: np.ndarray,
@@ -617,6 +658,15 @@ def _frame_mask(
                 mask &= ~inner
             else:
                 mask &= ~obstacle
+        return mask
+
+    inferred_obstacle = _infer_obstacle_from_frame_channels(
+        frame,
+        threshold=config.obstacle_threshold,
+        mode=config.obstacle_mode,
+    )
+    if inferred_obstacle is not None:
+        mask &= ~inferred_obstacle
         return mask
 
     if c >= 2:
